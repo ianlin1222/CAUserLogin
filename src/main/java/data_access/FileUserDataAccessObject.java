@@ -20,18 +20,17 @@ import use_case.signup.SignupUserDataAccessInterface;
  * DAO for user data implemented using a File to persist the data.
  */
 public class FileUserDataAccessObject implements SignupUserDataAccessInterface,
-                                                 LoginUserDataAccessInterface,
-                                                 ChangePasswordUserDataAccessInterface {
+        LoginUserDataAccessInterface,
+        ChangePasswordUserDataAccessInterface {
 
     private static final String HEADER = "username,password";
-
     private final File csvFile;
     private final Map<String, Integer> headers = new LinkedHashMap<>();
     private final Map<String, User> accounts = new HashMap<>();
+    private String currentUser;
 
     public FileUserDataAccessObject(String csvPath, UserFactory userFactory) throws IOException {
-
-        csvFile = new File(csvPath);
+        this.csvFile = new File(csvPath);
         headers.put("username", 0);
         headers.put("password", 1);
 
@@ -39,52 +38,42 @@ public class FileUserDataAccessObject implements SignupUserDataAccessInterface,
             save();
         }
         else {
-
             try (BufferedReader reader = new BufferedReader(new FileReader(csvFile))) {
                 final String header = reader.readLine();
-
                 if (!header.equals(HEADER)) {
-                    throw new RuntimeException(String.format("header should be%n: %s%but was:%n%s", HEADER, header));
+                    throw new RuntimeException("Incorrect header: " + header);
                 }
-
                 String row;
                 while ((row = reader.readLine()) != null) {
                     final String[] col = row.split(",");
-                    final String username = String.valueOf(col[headers.get("username")]);
-                    final String password = String.valueOf(col[headers.get("password")]);
-                    final User user = userFactory.create(username, password);
-                    accounts.put(username, user);
+                    final String username = col[headers.get("username")];
+                    final String password = col[headers.get("password")];
+                    accounts.put(username, userFactory.create(username, password));
                 }
             }
         }
     }
 
-    private void save() {
-        final BufferedWriter writer;
-        try {
-            writer = new BufferedWriter(new FileWriter(csvFile));
+    private void save() throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(csvFile))) {
             writer.write(String.join(",", headers.keySet()));
             writer.newLine();
-
             for (User user : accounts.values()) {
-                final String line = String.format("%s,%s",
-                        user.getName(), user.getPassword());
-                writer.write(line);
+                writer.write(String.format("%s,%s", user.getName(), user.getPassword()));
                 writer.newLine();
             }
-
-            writer.close();
-
-        }
-        catch (IOException ex) {
-            throw new RuntimeException(ex);
         }
     }
 
     @Override
     public void save(User user) {
         accounts.put(user.getName(), user);
-        this.save();
+        try {
+            save();
+        }
+        catch (IOException ioException) {
+            throw new RuntimeException(ioException);
+        }
     }
 
     @Override
@@ -99,8 +88,22 @@ public class FileUserDataAccessObject implements SignupUserDataAccessInterface,
 
     @Override
     public void changePassword(User user) {
-        // Replace the User object in the map
         accounts.put(user.getName(), user);
-        save();
+        try {
+            save();
+        }
+        catch (IOException ioException) {
+            throw new RuntimeException(ioException);
+        }
+    }
+
+    @Override
+    public void setCurrentUser(String name) {
+        this.currentUser = name;
+    }
+
+    @Override
+    public String getCurrentUser() {
+        return this.currentUser;
     }
 }
